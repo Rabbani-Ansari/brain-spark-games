@@ -4,6 +4,7 @@ import { Rocket, X, Check, Zap, Clock, ArrowLeft, Sparkles, Loader2 } from "luci
 import { Button } from "./ui/button";
 import { generateQuestions, getFallbackQuestions, Question, PerformanceData } from "@/services/questionService";
 import { useToast } from "@/hooks/use-toast";
+import { useStudentProfile } from "@/contexts/StudentProfileContext";
 
 interface RocketGameProps {
   subject: string;
@@ -12,22 +13,26 @@ interface RocketGameProps {
 
 export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
   const { toast } = useToast();
+  const { profile } = useStudentProfile();
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [rocketPosition, setRocketPosition] = useState(20);
-  const [questions, setQuestions] = useState<Question[]>([]);
+  // Start instantly with fallback questions
+  const [questions, setQuestions] = useState<Question[]>(() =>
+    getFallbackQuestions(subject, 1, 10)
+  );
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(10);
   const [isAnswered, setIsAnswered] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [difficulty, setDifficulty] = useState(1);
   const [gameOver, setGameOver] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // No loading!
   const [rocketBoost, setRocketBoost] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isAIPowered, setIsAIPowered] = useState(false);
-  
+
   // Performance tracking
   const performanceRef = useRef<PerformanceData>({
     correctAnswers: 0,
@@ -39,47 +44,40 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
 
   const currentQuestion = questions[currentQuestionIndex];
 
-  // Load initial questions
+  // Try to load AI questions in background
   useEffect(() => {
-    loadQuestions();
+    loadAIInBackground();
   }, []);
 
-  const loadQuestions = async () => {
-    setIsLoading(true);
+  const loadAIInBackground = async () => {
     try {
+      const studentProfileData = profile.isConfigured ? {
+        grade: profile.grade || '5',
+        board: profile.board,
+        preferredLanguage: profile.preferredLanguage
+      } : undefined;
+
       const response = await generateQuestions(
-        subject,
-        undefined,
-        difficulty,
-        performanceRef.current,
-        10
+        subject, undefined, difficulty,
+        performanceRef.current, 10, studentProfileData
       );
-      setQuestions(response.questions);
-      setDifficulty(response.adjustedDifficulty);
-      setIsAIPowered(true);
-      toast({
-        title: "AI Questions Ready! ✨",
-        description: `Difficulty adjusted to level ${response.adjustedDifficulty}`,
-      });
+
+      // Only upgrade if on first question
+      if (currentQuestionIndex === 0) {
+        setQuestions(response.questions);
+        setDifficulty(response.adjustedDifficulty);
+        setIsAIPowered(true);
+      }
     } catch (error) {
-      console.error("Failed to load AI questions, using fallback:", error);
-      const fallbackQuestions = getFallbackQuestions(subject, difficulty);
-      setQuestions(fallbackQuestions);
-      setIsAIPowered(false);
-      toast({
-        title: "Using Practice Questions",
-        description: "AI unavailable, using pre-made questions",
-        variant: "destructive"
-      });
+      console.log("Using fallback questions");
     }
     questionStartTimeRef.current = Date.now();
-    setIsLoading(false);
   };
 
   // Timer countdown
   useEffect(() => {
     if (gameOver || isAnswered !== null || isLoading || !currentQuestion) return;
-    
+
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
@@ -98,7 +96,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     setCombo(0);
     setRocketPosition(prev => Math.max(5, prev - 10));
     performanceRef.current.totalAnswers++;
-    
+
     setTimeout(() => {
       if (currentQuestionIndex >= questions.length - 1) {
         endGame();
@@ -110,29 +108,29 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
 
   const handleAnswer = useCallback((index: number) => {
     if (isAnswered !== null || gameOver || !currentQuestion) return;
-    
+
     const responseTime = (Date.now() - questionStartTimeRef.current) / 1000;
     responseTimes.current.push(responseTime);
-    
+
     setIsAnswered(index);
     const correct = index === currentQuestion.correctIndex;
     setIsCorrect(correct);
     setShowExplanation(true);
-    
+
     // Update performance
     performanceRef.current.totalAnswers++;
     if (correct) {
       performanceRef.current.correctAnswers++;
     }
-    performanceRef.current.averageResponseTime = 
+    performanceRef.current.averageResponseTime =
       responseTimes.current.reduce((a, b) => a + b, 0) / responseTimes.current.length;
-    
+
     if (correct) {
       const timeBonus = Math.floor(timeLeft * 5);
       const comboBonus = combo * 10;
       const difficultyBonus = difficulty * 5;
       const points = 50 + timeBonus + comboBonus + difficultyBonus;
-      
+
       setScore(prev => prev + points);
       setCombo(prev => {
         const newCombo = prev + 1;
@@ -146,7 +144,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       setCombo(0);
       setRocketPosition(prev => Math.max(5, prev - 15));
     }
-    
+
     setTimeout(() => {
       setShowExplanation(false);
       if (currentQuestionIndex >= questions.length - 1) {
@@ -200,12 +198,12 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
 
   if (gameOver) {
     const xpEarned = calculateXP();
-    const accuracy = performanceRef.current.totalAnswers > 0 
+    const accuracy = performanceRef.current.totalAnswers > 0
       ? (performanceRef.current.correctAnswers / performanceRef.current.totalAnswers * 100).toFixed(0)
       : "0";
-    
+
     return (
-      <motion.div 
+      <motion.div
         className="min-h-screen bg-background flex flex-col items-center justify-center p-6"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -223,17 +221,17 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           >
             🚀
           </motion.div>
-          
+
           <h2 className="text-3xl font-extrabold gradient-text mb-2">Mission Complete!</h2>
           <p className="text-muted-foreground mb-8">Great flying, pilot!</p>
-          
+
           {isAIPowered && (
             <div className="flex items-center justify-center gap-2 mb-4 text-secondary">
               <Sparkles className="w-4 h-4" />
               <span className="text-sm font-medium">AI-Powered Session</span>
             </div>
           )}
-          
+
           <div className="bg-card rounded-2xl p-6 mb-8 space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Final Score</span>
@@ -256,7 +254,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
               <span className="text-xl font-bold text-secondary">+{xpEarned}</span>
             </div>
           </div>
-          
+
           <Button size="xl" onClick={() => onExit(score, xpEarned)}>
             Continue
           </Button>
@@ -276,7 +274,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
         <Button variant="ghost" size="icon" onClick={() => onExit(score, calculateXP())}>
           <ArrowLeft className="w-6 h-6" />
         </Button>
-        
+
         <div className="flex items-center gap-4">
           {isAIPowered && (
             <div className="flex items-center gap-1 bg-secondary/20 px-2 py-1 rounded-lg">
@@ -284,14 +282,14 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
               <span className="text-xs font-semibold text-secondary">AI</span>
             </div>
           )}
-          
+
           <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl">
             <Zap className="w-4 h-4 text-secondary" />
             <span className="font-bold">{score}</span>
           </div>
-          
+
           {combo > 1 && (
-            <motion.div 
+            <motion.div
               className="flex items-center gap-1 bg-gradient-primary px-3 py-1.5 rounded-xl"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -307,15 +305,14 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       <div className="px-4 mb-4">
         <div className="flex gap-1">
           {questions.map((_, i) => (
-            <div 
+            <div
               key={i}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                i < currentQuestionIndex 
-                  ? 'bg-gradient-primary' 
-                  : i === currentQuestionIndex 
-                    ? 'bg-primary/50' 
-                    : 'bg-muted'
-              }`}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${i < currentQuestionIndex
+                ? 'bg-gradient-primary'
+                : i === currentQuestionIndex
+                  ? 'bg-primary/50'
+                  : 'bg-muted'
+                }`}
             />
           ))}
         </div>
@@ -329,7 +326,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       <div className="flex-1 relative px-4 py-8">
         {/* Track */}
         <div className="absolute left-8 top-0 bottom-0 w-1 bg-muted rounded-full">
-          <motion.div 
+          <motion.div
             className="absolute bottom-0 w-full bg-gradient-primary rounded-full"
             animate={{ height: `${rocketPosition}%` }}
             transition={{ type: "spring", damping: 15 }}
@@ -337,7 +334,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
         </div>
 
         {/* Rocket */}
-        <motion.div 
+        <motion.div
           className={`absolute left-2 ${rocketBoost ? 'rocket-boost' : ''}`}
           animate={{ bottom: `${rocketPosition}%` }}
           transition={{ type: "spring", damping: 15 }}
@@ -365,7 +362,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           <div className="flex items-center gap-2 mb-4">
             <Clock className={`w-5 h-5 ${timeLeft <= 3 ? 'text-destructive' : 'text-muted-foreground'}`} />
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-              <motion.div 
+              <motion.div
                 className={`h-full rounded-full ${timeLeft <= 3 ? 'bg-destructive' : 'bg-gradient-accent'}`}
                 animate={{ width: `${(timeLeft / 12) * 100}%` }}
                 transition={{ duration: 0.3 }}
@@ -403,8 +400,8 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                       disabled={isAnswered !== null}
                       className={`
                         relative p-4 rounded-2xl font-bold text-lg transition-all text-left
-                        ${isAnswered === null 
-                          ? 'bg-card border-2 border-border hover:border-primary active:scale-95' 
+                        ${isAnswered === null
+                          ? 'bg-card border-2 border-border hover:border-primary active:scale-95'
                           : showCorrect
                             ? 'bg-accent/20 border-2 border-accent'
                             : showWrong
@@ -416,7 +413,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                     >
                       <span className="text-muted-foreground mr-2">{String.fromCharCode(65 + index)}.</span>
                       {option}
-                      
+
                       {showCorrect && (
                         <motion.div
                           initial={{ scale: 0 }}
@@ -426,7 +423,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                           <Check className="w-4 h-4 text-accent-foreground" />
                         </motion.div>
                       )}
-                      
+
                       {showWrong && (
                         <motion.div
                           initial={{ scale: 0 }}

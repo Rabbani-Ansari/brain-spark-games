@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Calculator, 
-  Atom, 
-  Rocket, 
-  Crosshair, 
-  GripVertical, 
-  Skull,
+import {
+  Calculator,
+  Atom,
+  Rocket,
+  Crosshair,
+  Gamepad2,
+  Swords,
   Trophy,
   Star,
   ChevronRight
@@ -16,6 +17,11 @@ import { PlayerStats } from "@/components/PlayerStats";
 import { SubjectCard } from "@/components/SubjectCard";
 import { GameModeCard } from "@/components/GameModeCard";
 import { RocketGame } from "@/components/RocketGame";
+import { TapRaceGame } from "@/components/games/TapRaceGame";
+import { BubblePopGame } from "@/components/games/BubblePopGame";
+import { MemoryMatchGame } from "@/components/games/MemoryMatchGame";
+import { NumberNinjaGame } from "@/components/games/NumberNinjaGame";
+import { useStudentProfile } from "@/contexts/StudentProfileContext";
 
 type Screen = 'home' | 'subject' | 'modes' | 'game';
 
@@ -28,7 +34,16 @@ interface PlayerData {
 }
 
 const Index = () => {
+  const navigate = useNavigate();
+  const { profile } = useStudentProfile();
   const [screen, setScreen] = useState<Screen>('home');
+
+  // Redirect to onboarding if not configured
+  useEffect(() => {
+    if (!profile.isConfigured) {
+      navigate('/onboarding');
+    }
+  }, [profile.isConfigured, navigate]);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<string | null>(null);
   const [playerData, setPlayerData] = useState<PlayerData>({
@@ -55,7 +70,7 @@ const Index = () => {
       xp: prev.xp + xpEarned,
       level: Math.floor((prev.xp + xpEarned) / 500) + 1,
       streak: prev.streak + 1,
-      mathProgress: selectedSubject === 'Mathematics' 
+      mathProgress: selectedSubject === 'Mathematics'
         ? Math.min(100, prev.mathProgress + Math.floor(xpEarned / 20))
         : prev.mathProgress,
       scienceProgress: selectedSubject === 'Science'
@@ -67,8 +82,22 @@ const Index = () => {
     setSelectedSubject(null);
   };
 
-  if (screen === 'game' && selectedSubject) {
-    return <RocketGame subject={selectedSubject} onExit={handleGameExit} />;
+  // Render the selected game
+  if (screen === 'game' && selectedSubject && selectedMode) {
+    switch (selectedMode) {
+      case 'rocket':
+        return <RocketGame subject={selectedSubject} onExit={handleGameExit} />;
+      case 'taprace':
+        return <TapRaceGame subject={selectedSubject} onExit={handleGameExit} />;
+      case 'bubblepop':
+        return <BubblePopGame subject={selectedSubject} onExit={handleGameExit} />;
+      case 'memory':
+        return <MemoryMatchGame subject={selectedSubject} onExit={handleGameExit} />;
+      case 'ninja':
+        return <NumberNinjaGame subject={selectedSubject} onExit={handleGameExit} />;
+      default:
+        return <RocketGame subject={selectedSubject} onExit={handleGameExit} />;
+    }
   }
 
   return (
@@ -100,16 +129,16 @@ const Index = () => {
                   <span className="text-foreground">Quest</span>
                 </h1>
               </motion.div>
-              
+
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
               >
-                <PlayerStats 
-                  xp={playerData.xp} 
-                  level={playerData.level} 
-                  streak={playerData.streak} 
+                <PlayerStats
+                  xp={playerData.xp}
+                  level={playerData.level}
+                  streak={playerData.streak}
                 />
               </motion.div>
             </header>
@@ -138,9 +167,9 @@ const Index = () => {
                     <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
-                
+
                 {/* Decorative rocket */}
-                <motion.div 
+                <motion.div
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-6xl floating"
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -159,7 +188,7 @@ const Index = () => {
                 transition={{ delay: 0.4 }}
               >
                 <h3 className="text-xl font-bold text-foreground mb-4">Choose Subject</h3>
-                
+
                 <div className="space-y-4">
                   <SubjectCard
                     title="Mathematics"
@@ -169,7 +198,7 @@ const Index = () => {
                     questionsAnswered={142}
                     onClick={() => handleSubjectSelect('Mathematics')}
                   />
-                  
+
                   <SubjectCard
                     title="Science"
                     icon={Atom}
@@ -220,8 +249,8 @@ const Index = () => {
           >
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={() => setScreen('home')}
               >
@@ -236,37 +265,43 @@ const Index = () => {
             {/* Game Modes */}
             <div className="space-y-4">
               <GameModeCard
-                title="Rocket Mode"
+                title="🚀 Rocket Mode"
                 description="Race against time! Correct answers boost your rocket"
                 icon={Rocket}
                 gradient="bg-gradient-primary"
                 onClick={() => handleModeSelect('rocket')}
               />
-              
+
               <GameModeCard
-                title="Tap Race"
-                description="Quick reflexes! Tap the right answer fast"
+                title="🎯 Tap Race"
+                description="Quick reflexes! Tap falling answers before they hit bottom"
                 icon={Crosshair}
                 gradient="bg-gradient-secondary"
                 onClick={() => handleModeSelect('taprace')}
               />
-              
+
               <GameModeCard
-                title="Drag & Drop"
-                description="Match concepts by dragging to correct spots"
-                icon={GripVertical}
-                gradient="bg-gradient-accent"
-                locked
-                onClick={() => {}}
+                title="🫧 Bubble Pop"
+                description="Pop the bubbles with correct answers!"
+                icon={Gamepad2}
+                gradient="bg-gradient-to-br from-cyan-500 to-blue-500"
+                onClick={() => handleModeSelect('bubblepop')}
               />
-              
+
               <GameModeCard
-                title="Survival Mode"
-                description="One mistake and you're out! How long can you last?"
-                icon={Skull}
-                gradient="bg-gradient-to-br from-special to-destructive"
-                locked
-                onClick={() => {}}
+                title="🃏 Memory Match"
+                description="Match questions with their answers"
+                icon={Gamepad2}
+                gradient="bg-gradient-to-br from-purple-500 to-pink-500"
+                onClick={() => handleModeSelect('memory')}
+              />
+
+              <GameModeCard
+                title="⚔️ Number Ninja"
+                description="Slice through correct answers like a ninja!"
+                icon={Swords}
+                gradient="bg-gradient-to-br from-orange-500 to-red-500"
+                onClick={() => handleModeSelect('ninja')}
               />
             </div>
           </motion.div>

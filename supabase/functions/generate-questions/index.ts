@@ -15,6 +15,9 @@ interface QuestionRequest {
     averageResponseTime: number; // in seconds
   };
   questionCount: number;
+  grade?: string; // Class 1-8
+  board?: string; // maharashtra_state_board
+  language?: string; // en | hi | mr
 }
 
 interface Question {
@@ -24,6 +27,24 @@ interface Question {
   explanation: string;
   difficulty: number;
 }
+
+// Grade level descriptions for AI context
+const gradeDescriptions: Record<string, string> = {
+  '1': 'Class 1 (Ages 6-7): Basic counting, simple addition/subtraction, shapes, colors',
+  '2': 'Class 2 (Ages 7-8): Two-digit numbers, basic multiplication, simple fractions',
+  '3': 'Class 3 (Ages 8-9): Three-digit numbers, multiplication tables, basic geometry',
+  '4': 'Class 4 (Ages 9-10): Four operations, fractions, perimeter/area, basic science',
+  '5': 'Class 5 (Ages 10-11): Decimals, percentages, angles, human body, environment',
+  '6': 'Class 6 (Ages 11-12): Algebra basics, ratio/proportion, cell biology, physics intro',
+  '7': 'Class 7 (Ages 12-13): Linear equations, geometry proofs, chemistry basics, motion',
+  '8': 'Class 8 (Ages 13-14): Quadratic equations, trigonometry basics, atoms, force/pressure',
+};
+
+const languageInstructions: Record<string, string> = {
+  'en': 'Generate all content in English.',
+  'hi': 'Generate all content in Hindi (Devanagari script). Questions, options, and explanations must be in Hindi.',
+  'mr': 'Generate all content in Marathi (Devanagari script). Questions, options, and explanations must be in Marathi.',
+};
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -37,13 +58,13 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    const { subject, topic, difficulty, recentPerformance, questionCount } = await req.json() as QuestionRequest;
+    const { subject, topic, difficulty, recentPerformance, questionCount, grade, board, language } = await req.json() as QuestionRequest;
 
     // Calculate adaptive difficulty based on performance
-    const accuracy = recentPerformance.totalAnswers > 0 
-      ? recentPerformance.correctAnswers / recentPerformance.totalAnswers 
+    const accuracy = recentPerformance.totalAnswers > 0
+      ? recentPerformance.correctAnswers / recentPerformance.totalAnswers
       : 0.5;
-    
+
     let adjustedDifficulty = difficulty;
     if (accuracy > 0.8) {
       adjustedDifficulty = Math.min(10, difficulty + 1);
@@ -56,7 +77,20 @@ serve(async (req) => {
       adjustedDifficulty = Math.min(10, adjustedDifficulty + 1);
     }
 
+    // Get grade and language context
+    const gradeContext = grade ? gradeDescriptions[grade] || `Class ${grade}` : '';
+    const languageInstruction = languageInstructions[language || 'en'] || languageInstructions['en'];
+    const boardContext = board === 'maharashtra_state_board'
+      ? 'Follow Maharashtra State Board (SSC) syllabus and curriculum standards.'
+      : '';
+
     const prompt = `You are an educational AI generating quiz questions for a game-based learning app targeting students in India.
+
+${languageInstruction}
+
+Student Context:
+${gradeContext ? `- Grade Level: ${gradeContext}` : ''}
+${boardContext ? `- Curriculum: ${boardContext}` : ''}
 
 Subject: ${subject}
 ${topic ? `Topic: ${topic}` : ''}
@@ -71,11 +105,11 @@ ${accuracy < 0.5 ? '- Student is struggling, provide supportive questions with c
 
 Generate ${questionCount} multiple-choice questions following these rules:
 1. Each question should have exactly 4 options
-2. Questions should be appropriate for difficulty level ${adjustedDifficulty}
+2. Questions MUST be appropriate for the student's grade level${grade ? ` (Class ${grade})` : ''}
 3. Make questions engaging and relatable to students
 4. Include a brief explanation for the correct answer
-5. For Mathematics: include arithmetic, algebra, geometry based on difficulty
-6. For Science: include physics, chemistry, biology concepts
+5. For Mathematics: include arithmetic, algebra, geometry based on grade and difficulty
+6. For Science: include physics, chemistry, biology concepts appropriate for the grade
 
 You must respond with a JSON array of questions using this exact format:
 [
@@ -102,9 +136,9 @@ Only output the JSON array, no additional text.`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { 
-            role: "system", 
-            content: "You are an educational quiz generator. Always respond with valid JSON arrays only." 
+          {
+            role: "system",
+            content: "You are an educational quiz generator. Always respond with valid JSON arrays only."
           },
           { role: "user", content: prompt }
         ],
@@ -116,14 +150,14 @@ Only output the JSON array, no additional text.`;
       if (response.status === 429) {
         console.error("Rate limit exceeded");
         return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }), 
+          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       if (response.status === 402) {
         console.error("Payment required");
         return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }), 
+          JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -134,7 +168,7 @@ Only output the JSON array, no additional text.`;
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
-    
+
     if (!content) {
       throw new Error("No content in AI response");
     }
@@ -156,14 +190,14 @@ Only output the JSON array, no additional text.`;
         cleanedContent = cleanedContent.slice(0, -3);
       }
       cleanedContent = cleanedContent.trim();
-      
+
       questions = JSON.parse(cleanedContent);
-      
+
       // Validate structure
       if (!Array.isArray(questions)) {
         throw new Error("Response is not an array");
       }
-      
+
       questions = questions.map((q, index) => ({
         question: q.question || `Question ${index + 1}`,
         options: Array.isArray(q.options) ? q.options.slice(0, 4) : ["A", "B", "C", "D"],
@@ -171,7 +205,7 @@ Only output the JSON array, no additional text.`;
         explanation: q.explanation || "No explanation provided",
         difficulty: q.difficulty || adjustedDifficulty
       }));
-      
+
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
       console.error("Content was:", content);
@@ -181,8 +215,8 @@ Only output the JSON array, no additional text.`;
     console.log("Successfully generated", questions.length, "questions");
 
     return new Response(
-      JSON.stringify({ 
-        questions, 
+      JSON.stringify({
+        questions,
         adjustedDifficulty,
         performanceAnalysis: {
           accuracy: accuracy * 100,
