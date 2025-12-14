@@ -1,64 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Rocket, X, Check, Zap, Clock, ArrowLeft } from "lucide-react";
+import { Rocket, X, Check, Zap, Clock, ArrowLeft, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
-
-interface Question {
-  id: number;
-  question: string;
-  options: string[];
-  correctIndex: number;
-  difficulty: number;
-}
-
-const generateQuestion = (difficulty: number): Question => {
-  const operations = ['+', '-', '×'];
-  const operation = operations[Math.floor(Math.random() * (difficulty > 3 ? 3 : 2))];
-  
-  let a: number, b: number, answer: number;
-  
-  const maxNum = Math.min(10 + difficulty * 5, 50);
-  
-  switch (operation) {
-    case '+':
-      a = Math.floor(Math.random() * maxNum) + 1;
-      b = Math.floor(Math.random() * maxNum) + 1;
-      answer = a + b;
-      break;
-    case '-':
-      a = Math.floor(Math.random() * maxNum) + 10;
-      b = Math.floor(Math.random() * Math.min(a, maxNum)) + 1;
-      answer = a - b;
-      break;
-    case '×':
-      a = Math.floor(Math.random() * 12) + 1;
-      b = Math.floor(Math.random() * 12) + 1;
-      answer = a * b;
-      break;
-    default:
-      a = 1; b = 1; answer = 2;
-  }
-  
-  // Generate wrong answers
-  const wrongAnswers = new Set<number>();
-  while (wrongAnswers.size < 3) {
-    const offset = Math.floor(Math.random() * 10) - 5;
-    const wrong = answer + (offset === 0 ? 1 : offset);
-    if (wrong !== answer && wrong > 0) {
-      wrongAnswers.add(wrong);
-    }
-  }
-  
-  const options = [answer, ...Array.from(wrongAnswers)].sort(() => Math.random() - 0.5);
-  
-  return {
-    id: Date.now(),
-    question: `${a} ${operation} ${b} = ?`,
-    options: options.map(String),
-    correctIndex: options.indexOf(answer),
-    difficulty
-  };
-};
+import { generateQuestions, getFallbackQuestions, Question, PerformanceData } from "@/services/questionService";
+import { useToast } from "@/hooks/use-toast";
 
 interface RocketGameProps {
   subject: string;
@@ -66,22 +11,74 @@ interface RocketGameProps {
 }
 
 export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
+  const { toast } = useToast();
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [rocketPosition, setRocketPosition] = useState(20);
-  const [question, setQuestion] = useState<Question>(() => generateQuestion(1));
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(10);
   const [isAnswered, setIsAnswered] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [difficulty, setDifficulty] = useState(1);
-  const [questionsAnswered, setQuestionsAnswered] = useState(0);
-  const [rocketBoost, setRocketBoost] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [rocketBoost, setRocketBoost] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [isAIPowered, setIsAIPowered] = useState(false);
+  
+  // Performance tracking
+  const performanceRef = useRef<PerformanceData>({
+    correctAnswers: 0,
+    totalAnswers: 0,
+    averageResponseTime: 5
+  });
+  const questionStartTimeRef = useRef<number>(Date.now());
+  const responseTimes = useRef<number[]>([]);
+
+  const currentQuestion = questions[currentQuestionIndex];
+
+  // Load initial questions
+  useEffect(() => {
+    loadQuestions();
+  }, []);
+
+  const loadQuestions = async () => {
+    setIsLoading(true);
+    try {
+      const response = await generateQuestions(
+        subject,
+        undefined,
+        difficulty,
+        performanceRef.current,
+        10
+      );
+      setQuestions(response.questions);
+      setDifficulty(response.adjustedDifficulty);
+      setIsAIPowered(true);
+      toast({
+        title: "AI Questions Ready! ✨",
+        description: `Difficulty adjusted to level ${response.adjustedDifficulty}`,
+      });
+    } catch (error) {
+      console.error("Failed to load AI questions, using fallback:", error);
+      const fallbackQuestions = getFallbackQuestions(subject, difficulty);
+      setQuestions(fallbackQuestions);
+      setIsAIPowered(false);
+      toast({
+        title: "Using Practice Questions",
+        description: "AI unavailable, using pre-made questions",
+        variant: "destructive"
+      });
+    }
+    questionStartTimeRef.current = Date.now();
+    setIsLoading(false);
+  };
 
   // Timer countdown
   useEffect(() => {
-    if (gameOver || isAnswered !== null) return;
+    if (gameOver || isAnswered !== null || isLoading || !currentQuestion) return;
     
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -94,33 +91,47 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [question.id, gameOver, isAnswered]);
+  }, [currentQuestionIndex, gameOver, isAnswered, isLoading, currentQuestion]);
 
   const handleTimeout = () => {
     setIsCorrect(false);
     setCombo(0);
     setRocketPosition(prev => Math.max(5, prev - 10));
+    performanceRef.current.totalAnswers++;
     
     setTimeout(() => {
-      if (questionsAnswered >= 9) {
+      if (currentQuestionIndex >= questions.length - 1) {
         endGame();
       } else {
         nextQuestion();
       }
-    }, 1000);
+    }, 1500);
   };
 
   const handleAnswer = useCallback((index: number) => {
-    if (isAnswered !== null || gameOver) return;
+    if (isAnswered !== null || gameOver || !currentQuestion) return;
+    
+    const responseTime = (Date.now() - questionStartTimeRef.current) / 1000;
+    responseTimes.current.push(responseTime);
     
     setIsAnswered(index);
-    const correct = index === question.correctIndex;
+    const correct = index === currentQuestion.correctIndex;
     setIsCorrect(correct);
+    setShowExplanation(true);
+    
+    // Update performance
+    performanceRef.current.totalAnswers++;
+    if (correct) {
+      performanceRef.current.correctAnswers++;
+    }
+    performanceRef.current.averageResponseTime = 
+      responseTimes.current.reduce((a, b) => a + b, 0) / responseTimes.current.length;
     
     if (correct) {
       const timeBonus = Math.floor(timeLeft * 5);
       const comboBonus = combo * 10;
-      const points = 50 + timeBonus + comboBonus;
+      const difficultyBonus = difficulty * 5;
+      const points = 50 + timeBonus + comboBonus + difficultyBonus;
       
       setScore(prev => prev + points);
       setCombo(prev => {
@@ -131,31 +142,27 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       setRocketPosition(prev => Math.min(95, prev + 8));
       setRocketBoost(true);
       setTimeout(() => setRocketBoost(false), 300);
-      
-      // Increase difficulty every 3 correct answers
-      if ((questionsAnswered + 1) % 3 === 0) {
-        setDifficulty(prev => Math.min(prev + 1, 10));
-      }
     } else {
       setCombo(0);
       setRocketPosition(prev => Math.max(5, prev - 15));
     }
     
     setTimeout(() => {
-      if (questionsAnswered >= 9) {
+      setShowExplanation(false);
+      if (currentQuestionIndex >= questions.length - 1) {
         endGame();
       } else {
         nextQuestion();
       }
-    }, 1200);
-  }, [isAnswered, gameOver, question.correctIndex, timeLeft, combo, questionsAnswered]);
+    }, 2000);
+  }, [isAnswered, gameOver, currentQuestion, timeLeft, combo, difficulty, currentQuestionIndex, questions.length]);
 
   const nextQuestion = () => {
-    setQuestion(generateQuestion(difficulty));
-    setTimeLeft(Math.max(5, 10 - Math.floor(difficulty / 3)));
+    setCurrentQuestionIndex(prev => prev + 1);
+    setTimeLeft(Math.max(5, 12 - Math.floor(difficulty / 2)));
     setIsAnswered(null);
     setIsCorrect(null);
-    setQuestionsAnswered(prev => prev + 1);
+    questionStartTimeRef.current = Date.now();
   };
 
   const endGame = () => {
@@ -165,11 +172,37 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
   const calculateXP = () => {
     const baseXP = score / 10;
     const comboBonus = maxCombo * 5;
-    return Math.floor(baseXP + comboBonus);
+    const aiBonus = isAIPowered ? 20 : 0;
+    return Math.floor(baseXP + comboBonus + aiBonus);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="mb-6"
+        >
+          <Sparkles className="w-16 h-16 text-primary" />
+        </motion.div>
+        <h2 className="text-xl font-bold text-foreground mb-2">Generating Questions...</h2>
+        <p className="text-muted-foreground text-center">
+          AI is creating personalized questions for you
+        </p>
+        <div className="flex items-center gap-2 mt-4 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-sm">Analyzing your skill level</span>
+        </div>
+      </div>
+    );
+  }
 
   if (gameOver) {
     const xpEarned = calculateXP();
+    const accuracy = performanceRef.current.totalAnswers > 0 
+      ? (performanceRef.current.correctAnswers / performanceRef.current.totalAnswers * 100).toFixed(0)
+      : "0";
     
     return (
       <motion.div 
@@ -178,7 +211,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
         animate={{ opacity: 1 }}
       >
         <motion.div
-          className="text-center"
+          className="text-center w-full max-w-sm"
           initial={{ scale: 0.8, y: 20 }}
           animate={{ scale: 1, y: 0 }}
           transition={{ type: "spring", damping: 15 }}
@@ -194,16 +227,31 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           <h2 className="text-3xl font-extrabold gradient-text mb-2">Mission Complete!</h2>
           <p className="text-muted-foreground mb-8">Great flying, pilot!</p>
           
+          {isAIPowered && (
+            <div className="flex items-center justify-center gap-2 mb-4 text-secondary">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-sm font-medium">AI-Powered Session</span>
+            </div>
+          )}
+          
           <div className="bg-card rounded-2xl p-6 mb-8 space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Final Score</span>
               <span className="text-2xl font-bold text-foreground">{score}</span>
             </div>
             <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Accuracy</span>
+              <span className="text-xl font-bold text-accent">{accuracy}%</span>
+            </div>
+            <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Max Combo</span>
               <span className="text-xl font-bold text-primary">{maxCombo}x</span>
             </div>
             <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Difficulty Reached</span>
+              <span className="text-xl font-bold text-special">Level {difficulty}</span>
+            </div>
+            <div className="flex justify-between items-center border-t border-border pt-4">
               <span className="text-muted-foreground">XP Earned</span>
               <span className="text-xl font-bold text-secondary">+{xpEarned}</span>
             </div>
@@ -217,6 +265,10 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     );
   }
 
+  if (!currentQuestion) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
@@ -226,6 +278,13 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
         </Button>
         
         <div className="flex items-center gap-4">
+          {isAIPowered && (
+            <div className="flex items-center gap-1 bg-secondary/20 px-2 py-1 rounded-lg">
+              <Sparkles className="w-3 h-3 text-secondary" />
+              <span className="text-xs font-semibold text-secondary">AI</span>
+            </div>
+          )}
+          
           <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-xl">
             <Zap className="w-4 h-4 text-secondary" />
             <span className="font-bold">{score}</span>
@@ -247,18 +306,22 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       {/* Progress */}
       <div className="px-4 mb-4">
         <div className="flex gap-1">
-          {Array.from({ length: 10 }).map((_, i) => (
+          {questions.map((_, i) => (
             <div 
               key={i}
               className={`h-1.5 flex-1 rounded-full transition-colors ${
-                i < questionsAnswered 
+                i < currentQuestionIndex 
                   ? 'bg-gradient-primary' 
-                  : i === questionsAnswered 
+                  : i === currentQuestionIndex 
                     ? 'bg-primary/50' 
                     : 'bg-muted'
               }`}
             />
           ))}
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-xs text-muted-foreground">Question {currentQuestionIndex + 1}/{questions.length}</span>
+          <span className="text-xs text-muted-foreground">Difficulty: Lv.{difficulty}</span>
         </div>
       </div>
 
@@ -304,7 +367,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
               <motion.div 
                 className={`h-full rounded-full ${timeLeft <= 3 ? 'bg-destructive' : 'bg-gradient-accent'}`}
-                animate={{ width: `${(timeLeft / 10) * 100}%` }}
+                animate={{ width: `${(timeLeft / 12) * 100}%` }}
                 transition={{ duration: 0.3 }}
               />
             </div>
@@ -316,21 +379,21 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           {/* Question */}
           <AnimatePresence mode="wait">
             <motion.div
-              key={question.id}
+              key={currentQuestion.id}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="mb-6"
             >
-              <h2 className="text-3xl font-extrabold text-foreground text-center mb-8">
-                {question.question}
+              <h2 className="text-2xl font-extrabold text-foreground text-center mb-6 leading-tight">
+                {currentQuestion.question}
               </h2>
 
               {/* Options */}
-              <div className="grid grid-cols-2 gap-3">
-                {question.options.map((option, index) => {
+              <div className="grid grid-cols-1 gap-3">
+                {currentQuestion.options.map((option, index) => {
                   const isSelected = isAnswered === index;
-                  const showCorrect = isAnswered !== null && index === question.correctIndex;
+                  const showCorrect = isAnswered !== null && index === currentQuestion.correctIndex;
                   const showWrong = isSelected && !isCorrect;
 
                   return (
@@ -339,7 +402,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                       onClick={() => handleAnswer(index)}
                       disabled={isAnswered !== null}
                       className={`
-                        relative p-5 rounded-2xl font-bold text-xl transition-all
+                        relative p-4 rounded-2xl font-bold text-lg transition-all text-left
                         ${isAnswered === null 
                           ? 'bg-card border-2 border-border hover:border-primary active:scale-95' 
                           : showCorrect
@@ -351,13 +414,14 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                       `}
                       whileTap={isAnswered === null ? { scale: 0.95 } : {}}
                     >
+                      <span className="text-muted-foreground mr-2">{String.fromCharCode(65 + index)}.</span>
                       {option}
                       
                       {showCorrect && (
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          className="absolute -right-2 -top-2 w-7 h-7 rounded-full bg-accent flex items-center justify-center"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-accent flex items-center justify-center"
                         >
                           <Check className="w-4 h-4 text-accent-foreground" />
                         </motion.div>
@@ -367,7 +431,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
-                          className="absolute -right-2 -top-2 w-7 h-7 rounded-full bg-destructive flex items-center justify-center"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-destructive flex items-center justify-center"
                         >
                           <X className="w-4 h-4 text-destructive-foreground" />
                         </motion.div>
@@ -376,6 +440,23 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
                   );
                 })}
               </div>
+
+              {/* Explanation */}
+              <AnimatePresence>
+                {showExplanation && currentQuestion.explanation && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mt-4 p-4 bg-card/80 rounded-xl border border-border"
+                  >
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-semibold text-foreground">💡 </span>
+                      {currentQuestion.explanation}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </AnimatePresence>
         </div>
