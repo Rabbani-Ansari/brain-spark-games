@@ -16,7 +16,7 @@ interface ChatInterfaceProps {
   onClose: () => void;
   context: StudentContext;
   initialMessage?: string;
-  variant?: "fullscreen" | "bottomsheet";
+  variant?: "fullscreen" | "bottomsheet" | "embedded";
 }
 
 export const ChatInterface = ({
@@ -100,7 +100,7 @@ export const ChatInterface = ({
     }
 
     // Validate question before calling API
-    const validation = validateQuestion(messageText);
+    const validation = validateQuestion(messageText, context);
     if (!validation.isValid) {
       setMessages((prev) => [
         ...prev,
@@ -171,6 +171,107 @@ export const ChatInterface = ({
   };
 
   if (!isOpen) return null;
+
+  if (variant === "embedded") {
+    return (
+      <div className="flex flex-col h-full bg-card">
+        {/* Messages */}
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+        >
+          {messages.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-12"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-secondary flex items-center justify-center">
+                <Sparkles className="w-8 h-8 text-secondary-foreground" />
+              </div>
+              <h3 className="text-lg font-bold text-foreground mb-2">
+                Hi! I'm your AI Tutor 👋
+              </h3>
+              <p className="text-muted-foreground text-sm max-w-xs mx-auto">
+                Ask me anything about your studies. I'll explain concepts in a
+                way that's easy to understand!
+              </p>
+
+              {/* Suggested prompts */}
+              <div className="mt-6 space-y-2">
+                {[
+                  "Explain photosynthesis simply",
+                  "How do fractions work?",
+                  "What is the water cycle?",
+                ].map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => handleSend(prompt)}
+                    className="block w-full max-w-xs mx-auto p-3 text-sm text-left bg-muted/50 border border-border rounded-xl hover:border-primary transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {messages.map((msg, i) => (
+            <ChatMessage
+              key={msg.id}
+              message={msg}
+              isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
+            />
+          ))}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Scroll to bottom button */}
+        <AnimatePresence>
+          {showScrollButton && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={scrollToBottom}
+              className="absolute bottom-24 right-4 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg"
+            >
+              <ArrowDown className="w-5 h-5" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {/* Input */}
+        <div className="p-4 border-t border-border bg-card">
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask your doubt..."
+              disabled={isLoading}
+              className="flex-1 bg-muted border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+            />
+            <Button
+              onClick={() => handleSend()}
+              disabled={!inputValue.trim() || isLoading}
+              className="w-12 h-12"
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const containerClass =
     variant === "fullscreen"
@@ -304,3 +405,4 @@ export const ChatInterface = ({
     </AnimatePresence>
   );
 };
+

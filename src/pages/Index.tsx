@@ -10,7 +10,14 @@ import {
   Swords,
   Trophy,
   Star,
-  ChevronRight
+  ChevronRight,
+  BookOpen,
+  Globe,
+  History,
+  Monitor,
+  Palette,
+  User,
+  Languages
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlayerStats } from "@/components/PlayerStats";
@@ -25,8 +32,10 @@ import { useStudentProfile } from "@/contexts/StudentProfileContext";
 import { AIFloatingButton } from "@/components/ai-chat/AIFloatingButton";
 import { ChatInterface } from "@/components/ai-chat/ChatInterface";
 import { StudentContext } from "@/services/doubtSolverService";
+import { SubjectHub } from "@/components/dashboard/SubjectHub";
+import { ALLOWED_TOPICS } from "@/services/subjectValidator";
 
-type Screen = 'home' | 'subject' | 'modes' | 'game';
+type Screen = 'home' | 'subject' | 'hub' | 'modes' | 'game';
 
 interface PlayerData {
   xp: number;
@@ -34,7 +43,26 @@ interface PlayerData {
   streak: number;
   mathProgress: number;
   scienceProgress: number;
+  englishProgress: number;
+  [key: string]: number; // Allow dynamic progress keys
 }
+
+const SUBJECT_CONFIG: Record<string, { icon: any, gradient: string }> = {
+  'Mathematics': { icon: Calculator, gradient: "bg-gradient-primary" },
+  'Science': { icon: Atom, gradient: "bg-gradient-secondary" },
+  'English': { icon: BookOpen, gradient: "bg-gradient-to-br from-pink-500 to-rose-500" },
+  'Marathi': { icon: Languages, gradient: "bg-gradient-to-br from-orange-400 to-red-500" },
+  'Hindi': { icon: Languages, gradient: "bg-gradient-to-br from-amber-400 to-orange-500" },
+  'History and Civics': { icon: History, gradient: "bg-gradient-to-br from-blue-400 to-indigo-500" },
+  'Geography': { icon: Globe, gradient: "bg-gradient-to-br from-emerald-400 to-teal-500" },
+  'Environmental Studies - Part I': { icon: Atom, gradient: "bg-gradient-to-br from-green-400 to-emerald-600" },
+  'Environmental Studies - Part II': { icon: History, gradient: "bg-gradient-to-br from-yellow-400 to-orange-500" },
+  'Art Education': { icon: Palette, gradient: "bg-gradient-to-br from-purple-400 to-fuchsia-500" },
+  'Physical Education': { icon: User, gradient: "bg-gradient-to-br from-red-400 to-red-600" },
+  'Computer Science': { icon: Monitor, gradient: "bg-gradient-to-br from-slate-700 to-slate-900" },
+  'Sanskrit': { icon: Languages, gradient: "bg-gradient-to-br from-indigo-400 to-purple-600" },
+  'Work Experience': { icon: User, gradient: "bg-gradient-to-br from-gray-400 to-gray-600" }
+};
 
 const Index = () => {
   const navigate = useNavigate();
@@ -55,7 +83,8 @@ const Index = () => {
     level: 3,
     streak: 5,
     mathProgress: 45,
-    scienceProgress: 28
+    scienceProgress: 28,
+    englishProgress: 12
   });
 
   // Build student context for AI
@@ -68,7 +97,7 @@ const Index = () => {
 
   const handleSubjectSelect = (subject: string) => {
     setSelectedSubject(subject);
-    setScreen('modes');
+    setScreen('hub');
   };
 
   const handleModeSelect = (mode: string) => {
@@ -87,12 +116,19 @@ const Index = () => {
         : prev.mathProgress,
       scienceProgress: selectedSubject === 'Science'
         ? Math.min(100, prev.scienceProgress + Math.floor(xpEarned / 20))
-        : prev.scienceProgress
+        : prev.scienceProgress,
+      englishProgress: selectedSubject === 'English'
+        ? Math.min(100, prev.englishProgress + Math.floor(xpEarned / 20))
+        : prev.englishProgress
     }));
-    setScreen('home');
+    setScreen('hub');
     setSelectedMode(null);
-    setSelectedSubject(null);
   };
+
+  // Get subjects based on profile
+  const boardName = profile.board === 'maharashtra_state_board' ? 'Maharashtra State Board' : profile.board;
+  const gradeNum = parseInt(profile.grade || '5');
+  const availableSubjects = ALLOWED_TOPICS[boardName]?.[gradeNum] || ['Mathematics', 'Science', 'English'];
 
   // Render the selected game
   if (screen === 'game' && selectedSubject && selectedMode) {
@@ -137,8 +173,8 @@ const Index = () => {
                 transition={{ delay: 0.1 }}
               >
                 <h1 className="text-2xl font-extrabold">
-                  <span className="gradient-text">Quiz</span>
-                  <span className="text-foreground">Quest</span>
+                  <span className="gradient-text">Brain</span>
+                  <span className="text-foreground">Spark</span>
                 </h1>
               </motion.div>
 
@@ -202,23 +238,30 @@ const Index = () => {
                 <h3 className="text-xl font-bold text-foreground mb-4">Choose Subject</h3>
 
                 <div className="space-y-4">
-                  <SubjectCard
-                    title="Mathematics"
-                    icon={Calculator}
-                    gradient="bg-gradient-primary"
-                    progress={playerData.mathProgress}
-                    questionsAnswered={142}
-                    onClick={() => handleSubjectSelect('Mathematics')}
-                  />
+                  {availableSubjects.map((subject) => {
+                    const config = SUBJECT_CONFIG[subject] || {
+                      icon: BookOpen,
+                      gradient: "bg-gradient-to-br from-slate-400 to-slate-600"
+                    };
 
-                  <SubjectCard
-                    title="Science"
-                    icon={Atom}
-                    gradient="bg-gradient-secondary"
-                    progress={playerData.scienceProgress}
-                    questionsAnswered={89}
-                    onClick={() => handleSubjectSelect('Science')}
-                  />
+                    // Generate a safe progress key or default to 0
+                    // Note: In a real app we'd map this more robustly
+                    const progressKey = subject.toLowerCase().includes('math') ? 'mathProgress' :
+                      subject.toLowerCase().includes('science') ? 'scienceProgress' :
+                        subject.toLowerCase().includes('english') ? 'englishProgress' : 'xp'; // Fallback
+
+                    return (
+                      <SubjectCard
+                        key={subject}
+                        title={subject}
+                        icon={config.icon}
+                        gradient={config.gradient}
+                        progress={playerData[progressKey] || 0} // Simplify progress for now
+                        questionsAnswered={Math.floor(Math.random() * 50) + 10} // Mock data
+                        onClick={() => handleSubjectSelect(subject)}
+                      />
+                    );
+                  })}
                 </div>
               </motion.div>
             </section>
@@ -251,77 +294,23 @@ const Index = () => {
           </motion.div>
         )}
 
-        {screen === 'modes' && selectedSubject && (
-          <motion.div
-            key="modes"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            className="min-h-screen flex flex-col p-5"
-          >
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-8">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setScreen('home')}
-              >
-                <ChevronRight className="w-6 h-6 rotate-180" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">{selectedSubject}</h1>
-                <p className="text-muted-foreground">Choose your game mode</p>
-              </div>
-            </div>
 
-            {/* Game Modes */}
-            <div className="space-y-4 pb-24">
-              <GameModeCard
-                title="🚀 Rocket Mode"
-                description="Race against time! Correct answers boost your rocket"
-                icon={Rocket}
-                gradient="bg-gradient-primary"
-                onClick={() => handleModeSelect('rocket')}
-              />
 
-              <GameModeCard
-                title="🎯 Tap Race"
-                description="Quick reflexes! Tap falling answers before they hit bottom"
-                icon={Crosshair}
-                gradient="bg-gradient-secondary"
-                onClick={() => handleModeSelect('taprace')}
-              />
-
-              <GameModeCard
-                title="🫧 Bubble Pop"
-                description="Pop the bubbles with correct answers!"
-                icon={Gamepad2}
-                gradient="bg-gradient-to-br from-cyan-500 to-blue-500"
-                onClick={() => handleModeSelect('bubblepop')}
-              />
-
-              <GameModeCard
-                title="🃏 Memory Match"
-                description="Match questions with their answers"
-                icon={Gamepad2}
-                gradient="bg-gradient-to-br from-purple-500 to-pink-500"
-                onClick={() => handleModeSelect('memory')}
-              />
-
-              <GameModeCard
-                title="⚔️ Number Ninja"
-                description="Slice through correct answers like a ninja!"
-                icon={Swords}
-                gradient="bg-gradient-to-br from-orange-500 to-red-500"
-                onClick={() => handleModeSelect('ninja')}
-              />
-            </div>
-          </motion.div>
+        {screen === 'hub' && selectedSubject && (
+          <SubjectHub
+            subject={selectedSubject}
+            onBack={() => {
+              setScreen('home');
+              setSelectedSubject(null);
+            }}
+            onGameSelect={handleModeSelect}
+            context={studentContext}
+          />
         )}
       </AnimatePresence>
 
-      {/* AI Floating Button - visible on home and modes screens */}
-      {(screen === 'home' || screen === 'modes') && (
+      {/* AI Floating Button - visible on home only */}
+      {screen === 'home' && (
         <AIFloatingButton onClick={() => setIsChatOpen(true)} />
       )}
 
