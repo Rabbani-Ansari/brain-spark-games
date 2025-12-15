@@ -22,6 +22,9 @@ import { BubblePopGame } from "@/components/games/BubblePopGame";
 import { MemoryMatchGame } from "@/components/games/MemoryMatchGame";
 import { NumberNinjaGame } from "@/components/games/NumberNinjaGame";
 import { useStudentProfile } from "@/contexts/StudentProfileContext";
+import { AIFloatingButton } from "@/components/ai-chat/AIFloatingButton";
+import { ChatInterface } from "@/components/ai-chat/ChatInterface";
+import { StudentContext } from "@/services/doubtSolverService";
 
 type Screen = 'home' | 'subject' | 'modes' | 'game';
 
@@ -37,6 +40,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { profile } = useStudentProfile();
   const [screen, setScreen] = useState<Screen>('home');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Redirect to onboarding if not configured
   useEffect(() => {
@@ -53,6 +57,14 @@ const Index = () => {
     mathProgress: 45,
     scienceProgress: 28
   });
+
+  // Build student context for AI
+  const studentContext: StudentContext = {
+    grade: profile.grade || '5',
+    board: profile.board === 'maharashtra_state_board' ? 'Maharashtra State Board' : profile.board,
+    language: profile.preferredLanguage === 'en' ? 'English' : profile.preferredLanguage === 'hi' ? 'Hindi' : 'Marathi',
+    subject: selectedSubject || undefined,
+  };
 
   const handleSubjectSelect = (subject: string) => {
     setSelectedSubject(subject);
@@ -212,7 +224,7 @@ const Index = () => {
             </section>
 
             {/* Quick Stats */}
-            <section className="px-5 pb-8">
+            <section className="px-5 pb-24">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -263,7 +275,7 @@ const Index = () => {
             </div>
 
             {/* Game Modes */}
-            <div className="space-y-4">
+            <div className="space-y-4 pb-24">
               <GameModeCard
                 title="🚀 Rocket Mode"
                 description="Race against time! Correct answers boost your rocket"
@@ -307,6 +319,19 @@ const Index = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AI Floating Button - visible on home and modes screens */}
+      {(screen === 'home' || screen === 'modes') && (
+        <AIFloatingButton onClick={() => setIsChatOpen(true)} />
+      )}
+
+      {/* AI Chat Interface */}
+      <ChatInterface
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        context={studentContext}
+        variant="fullscreen"
+      />
     </div>
   );
 };
