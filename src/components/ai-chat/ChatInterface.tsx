@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, Sparkles, Loader2, ArrowDown } from "lucide-react";
+import { X, Send, Sparkles, Loader2, ArrowDown, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
 import {
@@ -9,6 +9,7 @@ import {
   streamDoubtResponse,
   generateMessageId,
 } from "@/services/doubtSolverService";
+import { validateQuestion, isGreeting } from "@/services/subjectValidator";
 
 interface ChatInterfaceProps {
   isOpen: boolean;
@@ -83,6 +84,37 @@ export const ChatInterface = ({
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+
+    // Handle greetings with a friendly response (no API call)
+    if (isGreeting(messageText)) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          content: "Hi there! 👋 I'm your AI Tutor. What would you like to learn about today? Ask me any question about your studies!",
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    // Validate question before calling API
+    const validation = validateQuestion(messageText);
+    if (!validation.isValid) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateMessageId(),
+          role: "assistant",
+          content: validation.rejectionMessage || "Please ask a study-related question!",
+          timestamp: new Date(),
+          isRejection: true,
+        },
+      ]);
+      return;
+    }
+
     setIsLoading(true);
 
     // Create placeholder for assistant message
