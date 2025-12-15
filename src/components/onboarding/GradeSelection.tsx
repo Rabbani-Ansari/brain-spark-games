@@ -8,14 +8,11 @@ interface GradeSelectionProps {
 }
 
 const grades: { value: Grade; label: string; emoji: string }[] = [
-    { value: '1', label: 'Class 1', emoji: '🌱' },
-    { value: '2', label: 'Class 2', emoji: '🌿' },
-    { value: '3', label: 'Class 3', emoji: '🌳' },
-    { value: '4', label: 'Class 4', emoji: '⭐' },
-    { value: '5', label: 'Class 5', emoji: '🚀' },
     { value: '6', label: 'Class 6', emoji: '💫' },
     { value: '7', label: 'Class 7', emoji: '🔥' },
     { value: '8', label: 'Class 8', emoji: '🏆' },
+    { value: '9', label: 'Class 9', emoji: '⚡' },
+    { value: '10', label: 'Class 10', emoji: '🎓' },
 ];
 
 export const GradeSelection = ({ onNext }: GradeSelectionProps) => {
@@ -57,8 +54,8 @@ export const GradeSelection = ({ onNext }: GradeSelectionProps) => {
                         transition={{ delay: 0.1 + index * 0.05 }}
                         onClick={() => handleGradeSelect(grade.value)}
                         className={`p-4 rounded-2xl border-2 transition-all duration-200 ${profile.grade === grade.value
-                                ? 'border-primary bg-primary/10 scale-105'
-                                : 'border-border bg-card hover:border-primary/50 hover:bg-primary/5'
+                            ? 'border-primary bg-primary/10 scale-105'
+                            : 'border-border bg-card hover:border-primary/50 hover:bg-primary/5'
                             }`}
                     >
                         <div className="text-3xl mb-2">{grade.emoji}</div>
@@ -83,6 +80,10 @@ export const GradeSelection = ({ onNext }: GradeSelectionProps) => {
                     <ChevronRight className="w-5 h-5 ml-2" />
                 </Button>
             </motion.div>
+
+            <p className="text-xs text-center text-muted-foreground px-4 mt-8">
+                This app is currently optimized for Classes 6–10 (Maharashtra Board) to ensure high-quality, exam-aligned learning.
+            </p>
         </div>
     );
 };

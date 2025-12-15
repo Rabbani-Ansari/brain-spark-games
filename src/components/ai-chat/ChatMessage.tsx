@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { User, Sparkles, Copy, Check, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { User, Sparkles, Copy, Check, AlertTriangle, Volume2, VolumeX, StopCircle } from "lucide-react"; // Added Volume imports
+import { useState, useEffect } from "react";
 import { Message } from "@/services/doubtSolverService";
 
 interface ChatMessageProps {
@@ -10,13 +10,42 @@ interface ChatMessageProps {
 
 export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const isUser = message.role === "user";
   const isRejection = message.isRejection;
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+      }
+    }
+  }, [isSpeaking]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSpeak = () => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(message.content);
+    utterance.lang = 'en-US'; // Could be dynamic based on detected language
+    utterance.rate = 1; /* Speed */
+    utterance.pitch = 1;
+
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
   };
 
   // Simple markdown-like formatting
@@ -46,13 +75,12 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
     >
       {/* Avatar */}
       <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-          isUser
+        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${isUser
             ? "bg-primary text-primary-foreground"
             : isRejection
-            ? "bg-amber-500/20 text-amber-500"
-            : "bg-gradient-secondary text-secondary-foreground"
-        }`}
+              ? "bg-amber-500/20 text-amber-500"
+              : "bg-gradient-secondary text-secondary-foreground"
+          }`}
       >
         {isUser ? (
           <User className="w-4 h-4" />
@@ -68,19 +96,18 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
         className={`flex-1 max-w-[85%] ${isUser ? "text-right" : "text-left"}`}
       >
         <div
-          className={`inline-block p-3 rounded-2xl ${
-            isUser
+          className={`inline-block p-3 rounded-2xl ${isUser
               ? "bg-primary text-primary-foreground rounded-br-md"
               : isRejection
-              ? "bg-amber-500/10 border border-amber-500/30 rounded-bl-md"
-              : "bg-card border border-border rounded-bl-md"
-          }`}
+                ? "bg-amber-500/10 border border-amber-500/30 rounded-bl-md"
+                : "bg-card border border-border rounded-bl-md"
+            }`}
         >
           <div
             className="text-sm leading-relaxed whitespace-pre-wrap"
             dangerouslySetInnerHTML={{ __html: formatContent(message.content) }}
           />
-          
+
           {isStreaming && (
             <motion.span
               animate={{ opacity: [1, 0.5, 1] }}
@@ -93,6 +120,24 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
         {/* Actions for AI messages */}
         {!isUser && !isStreaming && message.content && !isRejection && (
           <div className="mt-1 flex gap-2">
+            <button
+              onClick={handleSpeak}
+              className={`flex items-center gap-1 text-xs transition-colors ${isSpeaking ? "text-primary animate-pulse" : "text-muted-foreground hover:text-foreground"
+                }`}
+            >
+              {isSpeaking ? (
+                <>
+                  <StopCircle className="w-3 h-3" />
+                  Stop
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3 h-3" />
+                  Read
+                </>
+              )}
+            </button>
+
             <button
               onClick={handleCopy}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"

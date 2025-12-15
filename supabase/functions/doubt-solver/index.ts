@@ -1,3 +1,4 @@
+// @ts-ignore
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -16,18 +17,22 @@ interface DoubtRequest {
   board: string;
   language: string;
   subject?: string;
+  chapter?: string;
+  chapterStats?: { totalAttempts: number; correctAnswers: number; status: string };
   currentQuestion?: string;
   messageHistory?: Message[];
 }
 
-serve(async (req) => {
+declare const Deno: any;
+
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { doubt, grade, board, language, subject, currentQuestion, messageHistory = [] }: DoubtRequest = await req.json();
-    
+    const { doubt, grade, board, language, subject, chapter, chapterStats, currentQuestion, messageHistory = [] }: DoubtRequest = await req.json();
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -36,18 +41,49 @@ serve(async (req) => {
     console.log(`Processing doubt for Grade ${grade}, ${board}, ${language}:`, doubt);
 
     // Build context-aware system prompt
-    const systemPrompt = `You are an expert AI tutor helping a Grade ${grade} student studying under the ${board} board in ${language}.
-${subject ? `Subject: ${subject}` : ""}
-${currentQuestion ? `\nCurrent question being discussed: "${currentQuestion}"` : ""}
+    let systemPrompt = `You are a friendly and expert AI Tutor for a Grade ${grade} student studying under the ${board} board. Language: ${language}.\n`;
 
-Your role:
+    if (chapter) {
+      systemPrompt += `\nCONTEXT: CHAPTER "${chapter}" (${subject})\n`;
+      if (chapterStats) {
+        systemPrompt += `STUDENT STATUS: ${chapterStats.status} (Attempts: ${chapterStats.totalAttempts}, Correct: ${chapterStats.correctAnswers})\n`;
+        if (chapterStats.status === 'Weak') {
+          systemPrompt += `COACHING: The student is struggling with this chapter. Be extra patient, break down concepts into very small steps, and provide easier examples.\n`;
+        } else if (chapterStats.status === 'Improving') {
+          systemPrompt += `COACHING: The student is improving. Encourage them and slowly introduce slightly harder concepts.\n`;
+        } else if (chapterStats.status === 'Strong') {
+          systemPrompt += `COACHING: The student has mastered this chapter! Congratulate them and feel free to discuss advanced applications or suggest moving to the next chapter.\n`;
+        }
+      }
+      systemPrompt += `STRICT RULE: You are currently teaching ONLY the chapter "${chapter}".\n`;
+      systemPrompt += `- Do NOT explain concepts from other chapters or advanced topics not in this chapter.\n`;
+      systemPrompt += `- If the student asks a question that belongs to a different chapter, politely DECLINE to answer directly.\n`;
+      systemPrompt += `- Instead, explain that the conceptual belongs to another chapter and ask if they would like to switch contexts.\n`;
+      systemPrompt += `- Use specific terminology and examples from the ${board} syllabus for "${chapter}".\n`;
+      systemPrompt += `- Focus on step-by-step explanations suitable for Grade ${grade}.\n`;
+    } else if (subject) {
+      systemPrompt += `\nCONTEXT: SUBJECT "${subject}" (Full Syllabus)\n`;
+      systemPrompt += `- You may answer questions from ANY chapter in the ${subject} syllabus for Grade ${grade}.\n`;
+      systemPrompt += `- Keep explanations simple, exam-focused, and age-appropriate.\n`;
+      systemPrompt += `- If a concept is too advanced (e.g., from Class 11/12), briefly mention it's for higher classes and stick to the Grade ${grade} level explanation.\n`;
+    } else {
+      systemPrompt += `\nCONTEXT: General Learning (Grade ${grade})\n`;
+      systemPrompt += `- Help the student with their studies across subjects.\n`;
+    }
+
+    if (currentQuestion) {
+      systemPrompt += `\nCURRENT ACTIVITY: The student is looking at this question: "${currentQuestion}"\n`;
+    }
+
+    systemPrompt += `\nGENERAL RULES:
 1. Explain concepts in SIMPLE language appropriate for Grade ${grade}
 2. Use REAL-WORLD EXAMPLES and STORIES to make concepts memorable
 3. Keep explanations concise but thorough
 4. Use bullet points for key concepts
-5. Provide 1-2 practice examples when relevant
-6. Be encouraging and supportive
-
+5. Provide 1-2 practice examples when relevant or asked
+6. Be encouraging, supportive, and never discourage the student
+7. Do NOT hallucinate syllabus content. If unsure, ask clarifying questions.
+    
 Format your responses with:
 - **Bold** for important terms
 - Bullet points for lists

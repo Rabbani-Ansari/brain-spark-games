@@ -30,14 +30,11 @@ interface Question {
 
 // Grade level descriptions for AI context
 const gradeDescriptions: Record<string, string> = {
-  '1': 'Class 1 (Ages 6-7): Basic counting, simple addition/subtraction, shapes, colors',
-  '2': 'Class 2 (Ages 7-8): Two-digit numbers, basic multiplication, simple fractions',
-  '3': 'Class 3 (Ages 8-9): Three-digit numbers, multiplication tables, basic geometry',
-  '4': 'Class 4 (Ages 9-10): Four operations, fractions, perimeter/area, basic science',
-  '5': 'Class 5 (Ages 10-11): Decimals, percentages, angles, human body, environment',
-  '6': 'Class 6 (Ages 11-12): Algebra basics, ratio/proportion, cell biology, physics intro',
-  '7': 'Class 7 (Ages 12-13): Linear equations, geometry proofs, chemistry basics, motion',
-  '8': 'Class 8 (Ages 13-14): Quadratic equations, trigonometry basics, atoms, force/pressure',
+  '6': 'Class 6 (Ages 11-12): Maharashtra Board (SSC). Algebra basics, ratio/proportion, cell biology, physics intro',
+  '7': 'Class 7 (Ages 12-13): Maharashtra Board (SSC). Linear equations, geometry proofs, chemistry basics, motion',
+  '8': 'Class 8 (Ages 13-14): Maharashtra Board (SSC). Quadratic equations, trigonometry basics, atoms, force/pressure',
+  '9': 'Class 9 (Ages 14-15): Maharashtra Board (SSC). Science part 1 & 2, Geometry, Algebra, History/Civics/Geography',
+  '10': 'Class 10 (Ages 15-16): Maharashtra Board (SSC). Board Exam preparation, Advanced Algebra/Geometry, Carbon compounds, Electric current',
 };
 
 const languageInstructions: Record<string, string> = {

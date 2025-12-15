@@ -8,6 +8,7 @@ import { useStudentProfile } from "@/contexts/StudentProfileContext";
 import { AIHelpButton } from "./ai-chat/AIHelpButton";
 import { ChatInterface } from "./ai-chat/ChatInterface";
 import { StudentContext } from "@/services/doubtSolverService";
+import { useMistakes } from "@/contexts/MistakeContext"; // Added import
 
 interface RocketGameProps {
   subject: string;
@@ -17,6 +18,7 @@ interface RocketGameProps {
 export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
   const { toast } = useToast();
   const { profile } = useStudentProfile();
+  const { captureMistake } = useMistakes(); // Destructure hook
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
@@ -150,6 +152,15 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     } else {
       setCombo(0);
       setRocketPosition(prev => Math.max(5, prev - 15));
+
+      // Capture mistake
+      captureMistake({
+        question: currentQuestion.question,
+        userAnswer: currentQuestion.options[index],
+        correctAnswer: currentQuestion.options[currentQuestion.correctIndex],
+        subject: subject,
+        topic: 'General' // Topic not on type yet
+      });
     }
 
     setTimeout(() => {

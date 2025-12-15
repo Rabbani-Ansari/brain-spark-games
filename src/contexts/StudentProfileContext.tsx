@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type Grade = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
+export type Grade = '6' | '7' | '8' | '9' | '10';
 export type Language = 'en' | 'hi' | 'mr';
 export type Board = 'maharashtra_state_board';
 

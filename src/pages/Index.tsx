@@ -34,6 +34,8 @@ import { ChatInterface } from "@/components/ai-chat/ChatInterface";
 import { StudentContext } from "@/services/doubtSolverService";
 import { SubjectHub } from "@/components/dashboard/SubjectHub";
 import { ALLOWED_TOPICS } from "@/services/subjectValidator";
+import { DailyMissionCard } from "@/components/dashboard/DailyMissionCard";
+import { MistakeVault } from "@/components/dashboard/MistakeVault";
 
 type Screen = 'home' | 'subject' | 'hub' | 'modes' | 'game';
 
@@ -89,7 +91,7 @@ const Index = () => {
 
   // Build student context for AI
   const studentContext: StudentContext = {
-    grade: profile.grade || '5',
+    grade: profile.grade || '6',
     board: profile.board === 'maharashtra_state_board' ? 'Maharashtra State Board' : profile.board,
     language: profile.preferredLanguage === 'en' ? 'English' : profile.preferredLanguage === 'hi' ? 'Hindi' : 'Marathi',
     subject: selectedSubject || undefined,
@@ -127,7 +129,7 @@ const Index = () => {
 
   // Get subjects based on profile
   const boardName = profile.board === 'maharashtra_state_board' ? 'Maharashtra State Board' : profile.board;
-  const gradeNum = parseInt(profile.grade || '5');
+  const gradeNum = parseInt(profile.grade || '6');
   const availableSubjects = ALLOWED_TOPICS[boardName]?.[gradeNum] || ['Mathematics', 'Science', 'English'];
 
   // Render the selected game
@@ -193,40 +195,11 @@ const Index = () => {
 
             {/* Hero Section */}
             <section className="px-5 py-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-gradient-surface rounded-3xl p-6 border border-border overflow-hidden relative"
-              >
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Star className="w-5 h-5 text-gold" />
-                    <span className="text-sm font-semibold text-gold">Daily Challenge</span>
-                  </div>
-                  <h2 className="text-2xl font-bold text-foreground mb-2">
-                    Ready to boost your brain? 🧠
-                  </h2>
-                  <p className="text-muted-foreground mb-4">
-                    Complete today's challenge to earn bonus XP
-                  </p>
-                  <Button variant="gold" className="group">
-                    Start Challenge
-                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </div>
-
-                {/* Decorative rocket */}
-                <motion.div
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-6xl floating"
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.5, type: "spring" }}
-                >
-                  🚀
-                </motion.div>
-              </motion.div>
+              <DailyMissionCard />
             </section>
+
+            {/* Mistake Vault Section - Only appears if there are mistakes */}
+            <MistakeVault />
 
             {/* Subjects Section */}
             <section className="px-5 pb-8 flex-1">
@@ -324,5 +297,5 @@ const Index = () => {
     </div>
   );
 };
-
 export default Index;
+

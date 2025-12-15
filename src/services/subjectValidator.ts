@@ -172,14 +172,11 @@ const SUBJECT_ALIASES: Record<string, string> = {
 
 export const ALLOWED_TOPICS: Record<string, Record<number, string[]>> = {
   'Maharashtra State Board': {
-    1: ['English', 'Marathi', 'Mathematics', 'Art Education', 'Physical Education', 'Work Experience'],
-    2: ['English', 'Marathi', 'Mathematics', 'Art Education', 'Physical Education', 'Work Experience'],
-    3: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Environmental Studies - Part I', 'Environmental Studies - Part II', 'Art Education', 'Physical Education', 'Work Experience'],
-    4: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Environmental Studies - Part I', 'Environmental Studies - Part II', 'Art Education', 'Physical Education', 'Work Experience'],
-    5: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Environmental Studies - Part I', 'Environmental Studies - Part II', 'Art Education', 'Physical Education', 'Work Experience'],
     6: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Science', 'History and Civics', 'Geography', 'Art Education', 'Physical Education'],
     7: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Science', 'History and Civics', 'Geography', 'Art Education', 'Physical Education'],
     8: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Science', 'History and Civics', 'Geography', 'Art Education', 'Physical Education', 'Sanskrit'],
+    9: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Science', 'History and Civics', 'Geography', 'Art Education', 'Physical Education', 'Sanskrit', 'Computer Science'],
+    10: ['English', 'Marathi', 'Hindi', 'Mathematics', 'Science', 'History and Civics', 'Geography', 'Art Education', 'Physical Education', 'Sanskrit', 'Computer Science'],
   }
 };
 

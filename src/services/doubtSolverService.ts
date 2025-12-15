@@ -11,6 +11,8 @@ export interface StudentContext {
   board: string;
   language: string;
   subject?: string;
+  chapter?: string;
+  chapterStats?: { totalAttempts: number; correctAnswers: number; status: string };
   currentQuestion?: string;
 }
 
@@ -44,6 +46,8 @@ export async function streamDoubtResponse({
         board: context.board,
         language: context.language,
         subject: context.subject,
+        chapter: context.chapter,
+        chapterStats: context.chapterStats,
         currentQuestion: context.currentQuestion,
         messageHistory: messageHistory.map((m) => ({
           role: m.role,
