@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { User, Sparkles, Copy, Check } from "lucide-react";
+import { User, Sparkles, Copy, Check, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { Message } from "@/services/doubtSolverService";
 
@@ -11,6 +11,7 @@ interface ChatMessageProps {
 export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "user";
+  const isRejection = message.isRejection;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -25,6 +26,9 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
       .map((line, i) => {
         // Bold text
         line = line.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
+        // Checkmarks
+        line = line.replace(/✅/g, '<span class="text-green-500">✅</span>');
+        line = line.replace(/❌/g, '<span class="text-red-500">❌</span>');
         // Bullet points
         if (line.startsWith("- ") || line.startsWith("• ")) {
           return `<li class="ml-4">${line.substring(2)}</li>`;
@@ -45,11 +49,15 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
         className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
           isUser
             ? "bg-primary text-primary-foreground"
+            : isRejection
+            ? "bg-amber-500/20 text-amber-500"
             : "bg-gradient-secondary text-secondary-foreground"
         }`}
       >
         {isUser ? (
           <User className="w-4 h-4" />
+        ) : isRejection ? (
+          <AlertTriangle className="w-4 h-4" />
         ) : (
           <Sparkles className="w-4 h-4" />
         )}
@@ -63,6 +71,8 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
           className={`inline-block p-3 rounded-2xl ${
             isUser
               ? "bg-primary text-primary-foreground rounded-br-md"
+              : isRejection
+              ? "bg-amber-500/10 border border-amber-500/30 rounded-bl-md"
               : "bg-card border border-border rounded-bl-md"
           }`}
         >
@@ -81,7 +91,7 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
         </div>
 
         {/* Actions for AI messages */}
-        {!isUser && !isStreaming && message.content && (
+        {!isUser && !isStreaming && message.content && !isRejection && (
           <div className="mt-1 flex gap-2">
             <button
               onClick={handleCopy}
