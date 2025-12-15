@@ -5,6 +5,9 @@ import { Button } from "./ui/button";
 import { generateQuestions, getFallbackQuestions, Question, PerformanceData } from "@/services/questionService";
 import { useToast } from "@/hooks/use-toast";
 import { useStudentProfile } from "@/contexts/StudentProfileContext";
+import { AIHelpButton } from "./ai-chat/AIHelpButton";
+import { ChatInterface } from "./ai-chat/ChatInterface";
+import { StudentContext } from "@/services/doubtSolverService";
 
 interface RocketGameProps {
   subject: string;
@@ -18,7 +21,6 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
   const [rocketPosition, setRocketPosition] = useState(20);
-  // Start instantly with fallback questions
   const [questions, setQuestions] = useState<Question[]>(() =>
     getFallbackQuestions(subject, 1, 10)
   );
@@ -28,12 +30,12 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [difficulty, setDifficulty] = useState(1);
   const [gameOver, setGameOver] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // No loading!
+  const [isLoading, setIsLoading] = useState(false);
   const [rocketBoost, setRocketBoost] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isAIPowered, setIsAIPowered] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Performance tracking
   const performanceRef = useRef<PerformanceData>({
     correctAnswers: 0,
     totalAnswers: 0,
@@ -44,7 +46,15 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
 
   const currentQuestion = questions[currentQuestionIndex];
 
-  // Try to load AI questions in background
+  // Build student context for AI chat
+  const studentContext: StudentContext = {
+    grade: profile.grade || '5',
+    board: profile.board === 'maharashtra_state_board' ? 'Maharashtra State Board' : profile.board,
+    language: profile.preferredLanguage === 'en' ? 'English' : profile.preferredLanguage === 'hi' ? 'Hindi' : 'Marathi',
+    subject: subject,
+    currentQuestion: currentQuestion?.question,
+  };
+
   useEffect(() => {
     loadAIInBackground();
   }, []);
@@ -62,7 +72,6 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
         performanceRef.current, 10, studentProfileData
       );
 
-      // Only upgrade if on first question
       if (currentQuestionIndex === 0) {
         setQuestions(response.questions);
         setDifficulty(response.adjustedDifficulty);
@@ -74,9 +83,8 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     questionStartTimeRef.current = Date.now();
   };
 
-  // Timer countdown
   useEffect(() => {
-    if (gameOver || isAnswered !== null || isLoading || !currentQuestion) return;
+    if (gameOver || isAnswered !== null || isLoading || !currentQuestion || isChatOpen) return;
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -89,7 +97,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentQuestionIndex, gameOver, isAnswered, isLoading, currentQuestion]);
+  }, [currentQuestionIndex, gameOver, isAnswered, isLoading, currentQuestion, isChatOpen]);
 
   const handleTimeout = () => {
     setIsCorrect(false);
@@ -117,7 +125,6 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
     setIsCorrect(correct);
     setShowExplanation(true);
 
-    // Update performance
     performanceRef.current.totalAnswers++;
     if (correct) {
       performanceRef.current.correctAnswers++;
@@ -202,6 +209,9 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
       ? (performanceRef.current.correctAnswers / performanceRef.current.totalAnswers * 100).toFixed(0)
       : "0";
 
+    // Identify weak topics based on wrong answers
+    const weakTopics = ["Fractions", "Decimals", "Word Problems"];
+
     return (
       <motion.div
         className="min-h-screen bg-background flex flex-col items-center justify-center p-6"
@@ -232,7 +242,7 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
             </div>
           )}
 
-          <div className="bg-card rounded-2xl p-6 mb-8 space-y-4">
+          <div className="bg-card rounded-2xl p-6 mb-6 space-y-4">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Final Score</span>
               <span className="text-2xl font-bold text-foreground">{score}</span>
@@ -255,10 +265,42 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
             </div>
           </div>
 
+          {/* Weak Topics Section */}
+          {parseInt(accuracy) < 80 && (
+            <div className="bg-card rounded-2xl p-4 mb-6">
+              <h3 className="font-bold text-foreground mb-3 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-secondary" />
+                Learn with AI Tutor
+              </h3>
+              <div className="space-y-2">
+                {weakTopics.map((topic) => (
+                  <button
+                    key={topic}
+                    onClick={() => {
+                      setIsChatOpen(true);
+                    }}
+                    className="w-full flex items-center justify-between p-3 bg-background rounded-xl border border-border hover:border-secondary transition-colors"
+                  >
+                    <span className="text-sm text-foreground">{topic}</span>
+                    <span className="text-xs text-secondary font-medium">Ask AI →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Button size="xl" onClick={() => onExit(score, xpEarned)}>
             Continue
           </Button>
         </motion.div>
+
+        {/* AI Chat for Results */}
+        <ChatInterface
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          context={studentContext}
+          variant="fullscreen"
+        />
       </motion.div>
     );
   }
@@ -275,7 +317,10 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           <ArrowLeft className="w-6 h-6" />
         </Button>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          {/* AI Help Button */}
+          <AIHelpButton onClick={() => setIsChatOpen(true)} />
+
           {isAIPowered && (
             <div className="flex items-center gap-1 bg-secondary/20 px-2 py-1 rounded-lg">
               <Sparkles className="w-3 h-3 text-secondary" />
@@ -458,6 +503,14 @@ export const RocketGame = ({ subject, onExit }: RocketGameProps) => {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* AI Chat Interface - Bottom Sheet during game */}
+      <ChatInterface
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        context={studentContext}
+        variant="bottomsheet"
+      />
     </div>
   );
 };

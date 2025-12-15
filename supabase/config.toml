@@ -2,3 +2,6 @@ project_id = "ttqevvigovxltjckteyl"
 
 [functions.generate-questions]
 verify_jwt = false
+
+[functions.doubt-solver]
+verify_jwt = false
