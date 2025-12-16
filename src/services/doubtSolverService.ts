@@ -4,6 +4,8 @@ export interface Message {
   content: string;
   timestamp: Date;
   isRejection?: boolean;
+  imageUrl?: string; // Base64 data URL for images
+  imageMode?: "solve" | "guide"; // How AI should handle the image
 }
 
 export interface StudentContext {
@@ -34,6 +36,11 @@ export async function streamDoubtResponse({
   onError: (error: string) => void;
 }) {
   try {
+    // Find the last message to check for image
+    const lastUserMsg = messageHistory.length > 0 
+      ? messageHistory[messageHistory.length - 1] 
+      : null;
+    
     const response = await fetch(DOUBT_SOLVER_URL, {
       method: "POST",
       headers: {
@@ -49,6 +56,8 @@ export async function streamDoubtResponse({
         chapter: context.chapter,
         chapterStats: context.chapterStats,
         currentQuestion: context.currentQuestion,
+        imageUrl: lastUserMsg?.imageUrl,
+        imageMode: lastUserMsg?.imageMode,
         messageHistory: messageHistory.map((m) => ({
           role: m.role,
           content: m.content,

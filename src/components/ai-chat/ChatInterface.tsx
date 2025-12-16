@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, Sparkles, Loader2, ArrowDown, AlertTriangle, Mic, MicOff } from "lucide-react"; // Added Mic imports
+import { X, Send, Sparkles, Loader2, ArrowDown, AlertTriangle, Mic, MicOff, ImagePlus, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
 import {
@@ -28,6 +28,8 @@ interface ChatInterfaceProps {
   variant?: "fullscreen" | "bottomsheet" | "embedded";
 }
 
+type ImageMode = "solve" | "guide";
+
 export const ChatInterface = ({
   isOpen,
   onClose,
@@ -39,11 +41,18 @@ export const ChatInterface = ({
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [isListening, setIsListening] = useState(false); // Voice state
+  const [isListening, setIsListening] = useState(false);
+  
+  // Image upload state
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [imageMode, setImageMode] = useState<ImageMode>("solve");
+  const [showModeSelector, setShowModeSelector] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null); // Ref for recognition instance
+  const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { getChapterStats } = useChapterProgress();
 
@@ -76,6 +85,72 @@ export const ChatInterface = ({
     } else {
       recognitionRef.current.start();
     }
+  };
+
+  // Image upload handlers
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be less than 5MB");
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setPendingImage(base64);
+      setShowModeSelector(true);
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleCameraCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      
+      // Create video element to capture frame
+      const video = document.createElement("video");
+      video.srcObject = stream;
+      await video.play();
+      
+      // Create canvas and capture frame
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx?.drawImage(video, 0, 0);
+      
+      // Stop stream
+      stream.getTracks().forEach(track => track.stop());
+      
+      // Get base64
+      const base64 = canvas.toDataURL("image/jpeg", 0.8);
+      setPendingImage(base64);
+      setShowModeSelector(true);
+    } catch (error) {
+      console.error("Camera error:", error);
+      // Fallback to file input
+      fileInputRef.current?.click();
+    }
+  };
+
+  const clearPendingImage = () => {
+    setPendingImage(null);
+    setShowModeSelector(false);
   };
 
   // Handle initial message
@@ -124,8 +199,8 @@ export const ChatInterface = ({
   };
 
   const handleSend = async (text?: string) => {
-    const messageText = text || inputValue.trim();
-    if (!messageText || isLoading) return;
+    const messageText = text || inputValue.trim() || (pendingImage ? "Please help me with this" : "");
+    if ((!messageText && !pendingImage) || isLoading) return;
 
     // Get stats
     const chapterStats = (context.subject && context.chapter)
@@ -149,10 +224,13 @@ export const ChatInterface = ({
       role: "user",
       content: messageText,
       timestamp: new Date(),
+      imageUrl: pendingImage || undefined,
+      imageMode: pendingImage ? imageMode : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    clearPendingImage(); // Clear image after sending
 
     // Handle greetings with a friendly response (no API call)
     if (isGreeting(messageText)) {
@@ -168,20 +246,23 @@ export const ChatInterface = ({
       return;
     }
 
-    // Validate question before calling API
-    const validation = validateQuestion(messageText, fullContext);
-    if (!validation.isValid) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateMessageId(),
-          role: "assistant",
-          content: validation.rejectionMessage || "Please ask a study-related question!",
-          timestamp: new Date(),
-          isRejection: true,
-        },
-      ]);
-      return;
+    // Skip validation for image uploads (let AI analyze the image)
+    if (!pendingImage) {
+      // Validate question before calling API
+      const validation = validateQuestion(messageText, fullContext);
+      if (!validation.isValid) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: generateMessageId(),
+            role: "assistant",
+            content: validation.rejectionMessage || "Please ask a study-related question!",
+            timestamp: new Date(),
+            isRejection: true,
+          },
+        ]);
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -322,21 +403,52 @@ export const ChatInterface = ({
         </AnimatePresence>
 
         {/* Input */}
-        <div className="p-4 border-t border-border bg-card">
+        <div className="p-4 border-t border-border bg-card space-y-2">
+          {/* Pending image preview (embedded) */}
+          {pendingImage && (
+            <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+              <img src={pendingImage} alt="Preview" className="w-12 h-12 object-cover rounded" />
+              <div className="flex-1 flex gap-1">
+                <button
+                  onClick={() => setImageMode("solve")}
+                  className={`text-xs px-2 py-1 rounded ${imageMode === "solve" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+                >
+                  Solve
+                </button>
+                <button
+                  onClick={() => setImageMode("guide")}
+                  className={`text-xs px-2 py-1 rounded ${imageMode === "guide" ? "bg-amber-500 text-white" : "bg-background text-muted-foreground"}`}
+                >
+                  Guide
+                </button>
+              </div>
+              <button onClick={clearPendingImage} className="text-muted-foreground hover:text-destructive">×</button>
+            </div>
+          )}
+          
           <div className="flex gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              className="h-12 w-12 rounded-xl"
+            >
+              <ImagePlus className="w-5 h-5" />
+            </Button>
             <input
               ref={inputRef}
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask your doubt..."
+              placeholder={pendingImage ? "Add message..." : "Ask your doubt..."}
               disabled={isLoading}
               className="flex-1 bg-muted border border-border rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
             />
             <Button
               onClick={() => handleSend()}
-              disabled={!inputValue.trim() || isLoading}
+              disabled={(!inputValue.trim() && !pendingImage) || isLoading}
               className="w-12 h-12"
             >
               {isLoading ? (
@@ -467,8 +579,73 @@ export const ChatInterface = ({
 
         {/* Input Area */}
         <div className="p-4 border-t border-border bg-background space-y-3">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            className="hidden"
+          />
+
+          {/* Pending Image Preview with Mode Selector */}
+          <AnimatePresence>
+            {pendingImage && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: 20, height: 0 }}
+                className="bg-muted/50 rounded-xl p-3 border border-border"
+              >
+                <div className="flex gap-3">
+                  {/* Image thumbnail */}
+                  <div className="relative">
+                    <img
+                      src={pendingImage}
+                      alt="Upload preview"
+                      className="w-20 h-20 object-cover rounded-lg border border-border"
+                    />
+                    <button
+                      onClick={clearPendingImage}
+                      className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  {/* Mode selector */}
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground mb-2">How should I help?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setImageMode("solve")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
+                          imageMode === "solve"
+                            ? "bg-primary text-primary-foreground shadow-md"
+                            : "bg-background border border-border text-muted-foreground hover:border-primary"
+                        }`}
+                      >
+                        ✏️ Solve & Explain
+                      </button>
+                      <button
+                        onClick={() => setImageMode("guide")}
+                        className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
+                          imageMode === "guide"
+                            ? "bg-amber-500 text-white shadow-md"
+                            : "bg-background border border-border text-muted-foreground hover:border-amber-500"
+                        }`}
+                      >
+                        💡 Guide Me
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Quick Suggestions Chips */}
-          {messages.length > 0 && !isLoading && (
+          {messages.length > 0 && !isLoading && !pendingImage && (
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {suggestions.map((s) => (
                 <button
@@ -483,6 +660,30 @@ export const ChatInterface = ({
           )}
 
           <div className="flex gap-2 items-end">
+            {/* Image upload buttons */}
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10"
+                title="Upload image"
+              >
+                <ImagePlus className="w-5 h-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleCameraCapture}
+                disabled={isLoading}
+                className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10"
+                title="Take photo"
+              >
+                <Camera className="w-5 h-5" />
+              </Button>
+            </div>
+
             <div className="flex-1 bg-muted rounded-2xl border border-border focus-within:border-primary focus-within:bg-background transition-all flex items-center pr-2">
               <input
                 ref={inputRef}
@@ -490,7 +691,7 @@ export const ChatInterface = ({
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isListening ? "Listening..." : "Ask your doubt..."}
+                placeholder={pendingImage ? "Add a message (optional)..." : isListening ? "Listening..." : "Ask your doubt..."}
                 disabled={isLoading}
                 className="flex-1 bg-transparent border-none px-4 py-3 focus:ring-0 placeholder:text-muted-foreground text-foreground min-w-0"
               />
@@ -509,8 +710,8 @@ export const ChatInterface = ({
 
             <Button
               onClick={() => handleSend()}
-              disabled={(!inputValue.trim() && !isListening) || isLoading}
-              className={`w-12 h-12 rounded-2xl shadow-lg transition-all ${inputValue.trim() ? "scale-100" : "scale-95 opacity-80"}`}
+              disabled={(!inputValue.trim() && !pendingImage && !isListening) || isLoading}
+              className={`w-12 h-12 rounded-2xl shadow-lg transition-all ${(inputValue.trim() || pendingImage) ? "scale-100" : "scale-95 opacity-80"}`}
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
