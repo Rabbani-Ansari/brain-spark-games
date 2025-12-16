@@ -20,6 +20,8 @@ interface DoubtRequest {
   chapter?: string;
   chapterStats?: { totalAttempts: number; correctAnswers: number; status: string };
   currentQuestion?: string;
+  imageUrl?: string;
+  imageMode?: "solve" | "guide";
   messageHistory?: Message[];
 }
 
@@ -31,7 +33,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { doubt, grade, board, language, subject, chapter, chapterStats, currentQuestion, messageHistory = [] }: DoubtRequest = await req.json();
+    const { doubt, grade, board, language, subject, chapter, chapterStats, currentQuestion, imageUrl, imageMode, messageHistory = [] }: DoubtRequest = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -39,6 +41,9 @@ serve(async (req: Request) => {
     }
 
     console.log(`Processing doubt for Grade ${grade}, ${board}, ${language}:`, doubt);
+    if (imageUrl) {
+      console.log(`Image attached, mode: ${imageMode}`);
+    }
 
     // Build context-aware system prompt
     let systemPrompt = `You are a friendly and expert AI Tutor for a Grade ${grade} student studying under the ${board} board. Language: ${language}.\n`;
@@ -75,6 +80,27 @@ serve(async (req: Request) => {
       systemPrompt += `\nCURRENT ACTIVITY: The student is looking at this question: "${currentQuestion}"\n`;
     }
 
+    // Handle image mode instructions
+    if (imageUrl) {
+      if (imageMode === "guide") {
+        systemPrompt += `\nIMAGE ANALYSIS MODE: GUIDE ONLY
+- The student has uploaded an image of a problem/question
+- DO NOT solve the problem directly
+- Instead, give HINTS and guide them step-by-step
+- Ask leading questions to help them think
+- Only reveal the next step when they're stuck
+- Encourage their efforts and build confidence\n`;
+      } else {
+        systemPrompt += `\nIMAGE ANALYSIS MODE: SOLVE & EXPLAIN
+- The student has uploaded an image of a problem/question
+- First, identify what's shown in the image
+- Provide a clear, step-by-step solution
+- Explain each step thoroughly
+- Include the final answer clearly marked
+- Add tips for similar problems\n`;
+      }
+    }
+
     systemPrompt += `\nGENERAL RULES:
 1. Explain concepts in SIMPLE language appropriate for Grade ${grade}
 2. Use REAL-WORLD EXAMPLES and STORIES to make concepts memorable
@@ -92,11 +118,23 @@ Format your responses with:
 
 Keep responses under 400 words unless the topic requires more detail.`;
 
+    // Build the user message content (text or multimodal)
+    let userContent: any;
+    if (imageUrl) {
+      // Multimodal message with image
+      userContent = [
+        { type: "text", text: doubt || "Please analyze this image and help me understand it." },
+        { type: "image_url", image_url: { url: imageUrl } }
+      ];
+    } else {
+      userContent = doubt;
+    }
+
     // Build messages array
-    const messages: Message[] = [
-      { role: "user" as const, content: systemPrompt },
+    const messages: any[] = [
+      { role: "user", content: systemPrompt },
       ...messageHistory.slice(-10), // Keep last 10 messages for context
-      { role: "user" as const, content: doubt }
+      { role: "user", content: userContent }
     ];
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

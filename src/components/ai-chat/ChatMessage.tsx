@@ -95,6 +95,28 @@ export const ChatMessage = ({ message, isStreaming }: ChatMessageProps) => {
       <div
         className={`flex-1 max-w-[85%] ${isUser ? "text-right" : "text-left"}`}
       >
+        {/* Image preview if present */}
+        {message.imageUrl && (
+          <div className={`mb-2 ${isUser ? "flex justify-end" : ""}`}>
+            <div className="relative inline-block">
+              <img
+                src={message.imageUrl}
+                alt="Uploaded content"
+                className="max-w-[200px] max-h-[200px] rounded-xl border border-border object-cover"
+              />
+              {message.imageMode && (
+                <span className={`absolute bottom-2 right-2 text-[10px] px-2 py-0.5 rounded-full ${
+                  message.imageMode === "solve" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "bg-amber-500 text-white"
+                }`}>
+                  {message.imageMode === "solve" ? "Solve" : "Guide me"}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div
           className={`inline-block p-3 rounded-2xl ${isUser
               ? "bg-primary text-primary-foreground rounded-br-md"
