@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, Sparkles, Loader2, ArrowDown, AlertTriangle, Mic, MicOff, ImagePlus, Camera } from "lucide-react";
+import { X, Send, Sparkles, Loader2, ArrowDown, AlertTriangle, Mic, MicOff, ImagePlus, Camera, History, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
+import { ChatHistory } from "./ChatHistory";
 import {
   Message,
   StudentContext,
@@ -11,6 +12,13 @@ import {
 } from "@/services/doubtSolverService";
 import { validateQuestion, isGreeting } from "@/services/subjectValidator";
 import { useChapterProgress } from "@/contexts/ChapterProgressContext";
+import {
+  createConversation,
+  updateConversationTitle,
+  saveMessage,
+  getConversationMessages,
+} from "@/services/chatHistoryService";
+import { supabase } from "@/integrations/supabase/client";
 
 // Speech Recognition Type Definition
 declare global {
@@ -48,6 +56,11 @@ export const ChatInterface = ({
   const [imageMode, setImageMode] = useState<ImageMode>("solve");
   const [showModeSelector, setShowModeSelector] = useState(false);
   
+  // Chat history state
+  const [userId, setUserId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +68,21 @@ export const ChatInterface = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { getChapterStats } = useChapterProgress();
+
+  // Check for authenticated user
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id || null);
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -198,6 +226,21 @@ export const ChatInterface = ({
     setShowScrollButton(false);
   };
 
+  // Start a new conversation
+  const startNewChat = () => {
+    setMessages([]);
+    setConversationId(null);
+    setShowHistory(false);
+  };
+
+  // Load a conversation from history
+  const loadConversation = async (convId: string) => {
+    const msgs = await getConversationMessages(convId);
+    setMessages(msgs);
+    setConversationId(convId);
+    setShowHistory(false);
+  };
+
   const handleSend = async (text?: string) => {
     const messageText = text || inputValue.trim() || (pendingImage ? "Please help me with this" : "");
     if ((!messageText && !pendingImage) || isLoading) return;
@@ -232,17 +275,32 @@ export const ChatInterface = ({
     setInputValue("");
     clearPendingImage(); // Clear image after sending
 
+    // Create conversation if first message and user is logged in
+    let activeConvId = conversationId;
+    if (!activeConvId && userId && messages.length === 0) {
+      activeConvId = await createConversation(userId, context.subject, context.chapter);
+      if (activeConvId) {
+        setConversationId(activeConvId);
+        // Set title from first message
+        await updateConversationTitle(activeConvId, messageText);
+      }
+    }
+
+    // Save user message to database
+    if (activeConvId) {
+      await saveMessage(activeConvId, userMessage);
+    }
+
     // Handle greetings with a friendly response (no API call)
     if (isGreeting(messageText)) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateMessageId(),
-          role: "assistant",
-          content: "Hi there! 👋 I'm your AI Tutor. What would you like to learn about today? Ask me any question about your studies!",
-          timestamp: new Date(),
-        },
-      ]);
+      const greetingResponse: Message = {
+        id: generateMessageId(),
+        role: "assistant",
+        content: "Hi there! 👋 I'm your AI Tutor. What would you like to learn about today? Ask me any question about your studies!",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, greetingResponse]);
+      if (activeConvId) await saveMessage(activeConvId, greetingResponse);
       return;
     }
 
@@ -251,16 +309,15 @@ export const ChatInterface = ({
       // Validate question before calling API
       const validation = validateQuestion(messageText, fullContext);
       if (!validation.isValid) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateMessageId(),
-            role: "assistant",
-            content: validation.rejectionMessage || "Please ask a study-related question!",
-            timestamp: new Date(),
-            isRejection: true,
-          },
-        ]);
+        const rejectionResponse: Message = {
+          id: generateMessageId(),
+          role: "assistant",
+          content: validation.rejectionMessage || "Please ask a study-related question!",
+          timestamp: new Date(),
+          isRejection: true,
+        };
+        setMessages((prev) => [...prev, rejectionResponse]);
+        if (activeConvId) await saveMessage(activeConvId, rejectionResponse);
         return;
       }
     }
@@ -297,18 +354,28 @@ export const ChatInterface = ({
       context: fullContext,
       messageHistory: messages,
       onDelta: updateAssistant,
-      onDone: () => setIsLoading(false),
-      onError: (error) => {
+      onDone: async () => {
         setIsLoading(false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateMessageId(),
+        // Save assistant message after streaming completes
+        if (activeConvId && assistantContent) {
+          await saveMessage(activeConvId, {
+            id: assistantId,
             role: "assistant",
-            content: `❌ ${error}`,
+            content: assistantContent,
             timestamp: new Date(),
-          },
-        ]);
+          });
+        }
+      },
+      onError: async (error) => {
+        setIsLoading(false);
+        const errorMessage: Message = {
+          id: generateMessageId(),
+          role: "assistant",
+          content: `❌ ${error}`,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        if (activeConvId) await saveMessage(activeConvId, errorMessage);
       },
     });
   };
@@ -506,61 +573,95 @@ export const ChatInterface = ({
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-5 h-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {userId && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={startNewChat}
+                  title="New chat"
+                  className="text-muted-foreground hover:text-primary"
+                >
+                  <Plus className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowHistory(!showHistory)}
+                  title="Chat history"
+                  className={showHistory ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary"}
+                >
+                  <History className="w-5 h-5" />
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
 
-        {/* Messages */}
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10"
-          style={{ height: variant === "fullscreen" ? "calc(100vh - 140px)" : "calc(70vh - 140px)" }}
-        >
-          {messages.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-center py-12"
-            >
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-secondary flex items-center justify-center animate-bounce-slow">
-                <Sparkles className="w-8 h-8 text-secondary-foreground" />
-              </div>
-              <h3 className="text-xl font-bold text-foreground mb-2">
-                Hi! I'm your AI Tutor 👋
-              </h3>
-              <p className="text-muted-foreground text-sm max-w-xs mx-auto mb-8">
-                Ask me anything about your studies. I'll explain concepts in a
-                way that's easy to understand!
-              </p>
+        {/* History Panel or Messages */}
+        {showHistory && userId ? (
+          <div className="flex-1 overflow-y-auto bg-muted/10">
+            <ChatHistory
+              userId={userId}
+              onSelectConversation={loadConversation}
+              onClose={() => setShowHistory(false)}
+            />
+          </div>
+        ) : (
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10"
+            style={{ height: variant === "fullscreen" ? "calc(100vh - 140px)" : "calc(70vh - 140px)" }}
+          >
+            {messages.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-12"
+              >
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-secondary flex items-center justify-center animate-bounce-slow">
+                  <Sparkles className="w-8 h-8 text-secondary-foreground" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-2">
+                  Hi! I'm your AI Tutor 👋
+                </h3>
+                <p className="text-muted-foreground text-sm max-w-xs mx-auto mb-8">
+                  Ask me anything about your studies. I'll explain concepts in a
+                  way that's easy to understand!
+                </p>
 
-              {/* Initial Suggestions */}
-              <div className="grid gap-2 max-w-sm mx-auto px-4">
-                {suggestions.map((prompt) => (
-                  <button
-                    key={prompt}
-                    onClick={() => handleSend(prompt)}
-                    className="p-3 text-sm text-center bg-card border border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-all"
-                  >
-                    {prompt}
-                  </button>
+                {/* Initial Suggestions */}
+                <div className="grid gap-2 max-w-sm mx-auto px-4">
+                  {suggestions.map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => handleSend(prompt)}
+                      className="p-3 text-sm text-center bg-card border border-border rounded-xl hover:border-primary hover:bg-primary/5 transition-all"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            ) : (
+              <>
+                {messages.map((msg, i) => (
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
+                  />
                 ))}
-              </div>
-            </motion.div>
-          ) : (
-            <>
-              {messages.map((msg, i) => (
-                <ChatMessage
-                  key={msg.id}
-                  message={msg}
-                  isStreaming={isLoading && i === messages.length - 1 && msg.role === "assistant"}
-                />
-              ))}
-              <div ref={messagesEndRef} />
-            </>
-          )}
-        </div>
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+        )}
 
         {/* Scroll to bottom button */}
         <AnimatePresence>
