@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calculator,
@@ -17,7 +17,9 @@ import {
   Monitor,
   Palette,
   User,
-  Languages
+  Languages,
+  LogIn,
+  LogOut
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PlayerStats } from "@/components/PlayerStats";
@@ -29,6 +31,7 @@ import { BubblePopGame } from "@/components/games/BubblePopGame";
 import { MemoryMatchGame } from "@/components/games/MemoryMatchGame";
 import { NumberNinjaGame } from "@/components/games/NumberNinjaGame";
 import { useStudentProfile } from "@/contexts/StudentProfileContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { AIFloatingButton } from "@/components/ai-chat/AIFloatingButton";
 import { ChatInterface } from "@/components/ai-chat/ChatInterface";
 import { StudentContext } from "@/services/doubtSolverService";
@@ -69,6 +72,7 @@ const SUBJECT_CONFIG: Record<string, { icon: any, gradient: string }> = {
 const Index = () => {
   const navigate = useNavigate();
   const { profile } = useStudentProfile();
+  const { user, signOut } = useAuth();
   const [screen, setScreen] = useState<Screen>('home');
   const [isChatOpen, setIsChatOpen] = useState(false);
 
@@ -184,12 +188,35 @@ const Index = () => {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
+                className="flex items-center gap-3"
               >
                 <PlayerStats
                   xp={playerData.xp}
                   level={playerData.level}
                   streak={playerData.streak}
                 />
+                {user ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => signOut()}
+                    title="Sign out"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <LogOut className="w-5 h-5" />
+                  </Button>
+                ) : (
+                  <Link to="/auth">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Sign in"
+                      className="text-muted-foreground hover:text-primary"
+                    >
+                      <LogIn className="w-5 h-5" />
+                    </Button>
+                  </Link>
+                )}
               </motion.div>
             </header>
 
