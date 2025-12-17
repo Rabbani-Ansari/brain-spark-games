@@ -574,7 +574,7 @@ export const ChatInterface = ({
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {userId && (
+            {userId ? (
               <>
                 <Button
                   variant="ghost"
@@ -595,6 +595,13 @@ export const ChatInterface = ({
                   <History className="w-5 h-5" />
                 </Button>
               </>
+            ) : (
+              <a
+                href="/auth"
+                className="text-xs px-3 py-1.5 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors"
+              >
+                Sign in to save
+              </a>
             )}
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="w-5 h-5" />
